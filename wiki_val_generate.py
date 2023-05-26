@@ -80,7 +80,6 @@ if __name__ == "__main__":
     print('config_address: ', config_address)
     with open(config_address, 'rb') as f:
         args_dict, args_info = pickle.load(f)
-        
         model_postfix = config_postfix[:-3] + 'pt'
     
         args.num_of_models = int(args_dict['num_of_models'])

@@ -1,6 +1,6 @@
 #!/bin/bash
 . /opt/anaconda/etc/profile.d/conda.sh
-conda activate shem
+source activate shem
 
 CUDA_VISIBLE_DEVICES=0\
     python ppx_generate.py\

@@ -5,7 +5,15 @@ nltk.data.path.append('./')
 from nltk.corpus import framenet as fn
 import torch
 
-frame_relation = "Inheritance"
+group_relations = [
+  "Inheritance",
+  "Using",
+  "Precedes",
+  "Causative_of",
+  "Inchoative_of",
+  "Subframe"
+]
+
 
 def get_parent_child_framenet(relation):
   relations = relation.split("=")
@@ -19,11 +27,14 @@ def get_parent_child_mapping(frame_max, vocab2):
     frame = vocab2.itos[i]
     if i not in mp:
       mp[i] = []
-    try:
-      relations = list(fn.frame_relations(frame, type=frame_relation))
-      # relations = list(fn.frame_relations(frame))
-    except:
-      relations = []
+
+    relations = []
+    for g_r in group_relations:
+      try:
+        now = list(fn.frame_relations(frame, type=g_r))
+      except:
+        now = []
+      relations = relations + now
 
     for relation in relations:
       parent, child = get_parent_child_framenet(str(relation))

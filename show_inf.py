@@ -183,7 +183,7 @@ def run(args, args_dict):
                     curr_f_vals = f_vals
                     if i > 0:
                         frames_infer = models[i-1].latent_embs
-                        curr_f_vals = torch.argmax(models[i-1].latent_gumbels, -1)
+                        # curr_f_vals = torch.argmax(models[i-1].latent_gumbels, -1)
                         curr_f_vals = get_frames_for_upper_layers(args, curr_f_vals, vocab2)
 
                     _, _, _, _, _, _  = model(batch, batch_lens, frames_infer, f_vals=curr_f_vals)

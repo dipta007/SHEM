@@ -12,7 +12,7 @@ This repository is the official implementation of [Semantically-informed Hierarc
 ```
 git clone https://github.com/dipta007/SHEM
 cd SHEM
-git checkout ind_frame
+git checkout grp
 ```
 
 ## Conda Environment
@@ -39,20 +39,6 @@ gdown https://drive.google.com/drive/u/1/folders/1YUfHGdyVXONtvbJQCbBN0OA0ibXP82
 
 
 ## Usage
-### Changing Frame Relation:
-There are in total 10 frame relations. To change the frame relation, change the value of the variable `frame_relation` in `./framenet_relations.py` to one of the following values:
-```
-frame_relation = 'Inheritance'
-frame_relation = 'Using'
-frame_relation = 'Precedes'
-frame_relation = 'Metaphor'
-frame_relation = 'See_also'
-frame_relation = 'Causative_of'
-frame_relation = 'Inchoative_of'
-frame_relation = 'Perspective_on'
-frame_relation = 'Subframe'
-frame_relation = 'ReFraming_Mapping'
-```
 ### Training:
 ```
 ./train.sh $obsv_prob $exp_num $seed

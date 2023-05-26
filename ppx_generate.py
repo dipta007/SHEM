@@ -11,6 +11,10 @@ import random
 
 from cloze_utils import generate, find_file
 
+import torch
+torch.nn.Module.dump_patches = True
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='SHEM')
     parser.add_argument('--impute_with', type=int, default=0)
@@ -62,21 +66,22 @@ if __name__ == "__main__":
     #args.valid_narr = '/p/data/rezaee/event-SSSDV/wiki_6_inverse_cloze/test_0.6_TUP_DIST.txt'
     args.frame_vocab_address = './data/naacl/vocab_frame_'+str(args.frame_max)+'.pkl'
 
-    experiment_name = '{}_eps_{}_num_{}_seed_{}'.format('chain_event',str(args.obsv_prob),str(args.exp_num),str(args.seed))
-
-    config_prefix= './saved_configs/'
+    config_prefix = './saved_configs/'
     model_prefix = './saved_models/'
-    config_address = config_prefix + 'chain__emb_size_300_nlayers_2_lr_0.001_batch_size_64_seed_{}_bidir_True_num_latent_values_500_latent_dim_500_use_pretrained_True_dropout_0.0_num_clauses_5_obsv_prob_{}_exp_num_{}_num_of_models_2_num_of_children_5 5.pkl'.format(str(args.seed),str(args.obsv_prob),str(args.exp_num))
-    config_address = config_prefix + find_file(f'exp_num_{str(args.exp_num)}_', config_prefix)
+
+    config_address = config_prefix + 'chain__emb_size_300_nlayers_2_lr_0.001_batch_size_64_seed_{}_bidir_True_num_latent_values_500_latent_dim_500_dropout_0.0_num_clauses_5_obsv_prob_{}_template_20_exp_num_{}_num_of_models_2_num_of_children_5 3.pkl'.format(str(args.seed),str(args.obsv_prob),str(args.exp_num))
+    
+    config_postfix = find_file(f'exp_num_{str(args.exp_num)}_', config_prefix)
+    config_address = config_prefix + config_postfix
+    experiment_name = 'wiki_valid_{}_eps_{}_num_{}_seed_{}'.format('chain_event_',str(args.obsv_prob),str(args.exp_num),str(args.seed))
 
     print('prob: ', args.obsv_prob)
     print('perplexity_data: ', args.valid_data)
     print('config_address: ', config_address)
     with open(config_address, 'rb') as f:
         args_dict, args_info = pickle.load(f)
-        
-        model_postfix = 'chain__emb_size_300_nlayers_2_lr_0.001_batch_size_64_seed_{}_bidir_True_num_latent_values_500_latent_dim_500_dropout_0.0_num_clauses_5_obsv_prob_{}_template_20_exp_num_{}_num_of_models_{}_num_of_children_{}.pt'.format(str(args.seed), str(args.obsv_prob), str(args.exp_num), str(args_dict['num_of_models']), str(args_dict['num_of_children']))
-        
+        model_postfix = config_postfix[:-3] + 'pt'
+    
         args.num_of_models = int(args_dict['num_of_models'])
         args.model_prefix = model_prefix
         args.model_postfix = model_postfix
