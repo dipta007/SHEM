@@ -11,6 +11,8 @@ import data_utils as du
 from tqdm import tqdm
 import copy
 import os
+import csv 
+
 
 from DAG import example_tree
 from EncDec import Encoder, Decoder, Attention, fix_enc_hidden
@@ -140,7 +142,7 @@ def is_it_correct(nll, sz, num_of_models, target=0):
 
 
 # Inverse Narrative Cloze
-def do_ranking(args, models, batches, vocab, vocab2, data_len, use_cuda):
+def do_ranking(args, models, batches, vocab, vocab2, data_len, use_cuda, return_all=False):
     print("RANKING")
     ranked_acc = 0.0
     ranked_accs = [0.0] * len(models)
@@ -187,7 +189,7 @@ def do_ranking(args, models, batches, vocab, vocab2, data_len, use_cuda):
                 curr_f_vals = f_vals
                 if i > 0:
                     frames_infer = models[i-1].latent_embs
-                    # curr_f_vals = torch.argmax(models[i-1].latent_gumbels, -1)
+                    curr_f_vals = torch.argmax(models[i-1].latent_gumbels, -1)
                     curr_f_vals = get_frames_for_upper_layers(args, curr_f_vals, vocab2)
 
                 dhidden, latent_embs = model(src_tup, src_lens, frames_infer, f_vals=curr_f_vals, encode_only=True)
@@ -223,6 +225,26 @@ def do_ranking(args, models, batches, vocab, vocab2, data_len, use_cuda):
             ranked_acc += is_it_correct(nll, len(all_texts_vars) // 2, args.num_of_models)
             for i in range(len(models)):
                 ranked_accs[i] += is_it_correct(nlls[i], len(all_texts_vars) // 2, 1)
+
+            # CSV generation
+            now = []
+            for i in range(len(all_texts_vars) // 2):
+                curr = [iteration]
+                txt = " ".join([vocab.itos[v] for v in all_texts[i*2][0][0]])
+                curr.extend([txt])
+                for j in range(len(models)):
+                    ppl = torch.exp(nlls[j][i] / 1).item()
+                    curr.append(str(round(ppl, 2)))
+                    curr.append(is_it_correct(nlls[j], len(all_texts_vars) // 2, 1))
+                ppl_combined = torch.exp(nll[i] / args.num_of_models).item()
+                curr.append(str(round(ppl_combined, 2)))
+                curr.append(is_it_correct(nll, len(all_texts_vars) // 2, args.num_of_models))
+                curr.append(i == 0)
+                now.append(curr)
+                # print(iteration, txt, ppl, is_it_correct(nlls[i], len(all_texts_vars) // 2, 1), ppl_combined, is_it_correct(nll, len(all_texts_vars) // 2, args.num_of_models), i==0)
+            # print(now)
+            now.append([])
+
             # low perplexity == top ranked sentence - correct answer is the first one of course
             
             # all_texts_str = [transform(text[0].data.numpy()[0], vocab.itos) for text in all_texts_vars]
@@ -249,6 +271,9 @@ def do_ranking(args, models, batches, vocab, vocab2, data_len, use_cuda):
     for i in range(len(models)):
         ranked_accs[i] /= (iteration+1) * 1/100 # multiplying to get percent
         print("\t"*(i+1), "Average acc(%)_{}: {}\n".format(i, ranked_accs[i]))
+
+    if return_all:
+        return ranked_acc, ranked_accs
     return ranked_acc
 
 
@@ -305,7 +330,7 @@ def calc_perplexity(args, models, batches, vocab, vocab2, data_len):
                 curr_f_vals = f_vals
                 if i > 0:
                     frames_infer = models[i-1].latent_embs
-                    # curr_f_vals = torch.argmax(models[i-1].latent_gumbels, -1)
+                    curr_f_vals = torch.argmax(models[i-1].latent_gumbels, -1)
                     curr_f_vals = get_frames_for_upper_layers(args, curr_f_vals, vocab2)
 
                 _, _, _, _, _, _  = model(batch, batch_lens, frames_infer, f_vals=curr_f_vals)

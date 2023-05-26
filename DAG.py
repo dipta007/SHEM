@@ -35,7 +35,7 @@ class LatentNode(nn.Module):
         self.index_value = None # Index is the indices into the embedding of the above
         self.nohier = nohier_mode
         self.base_layer = base_layer
-        self.LogSoftmax = nn.LogSoftmax()
+        self.LogSoftmax = nn.LogSoftmax(dim=-1)
 
 
         self.tau= 0.5
@@ -218,15 +218,6 @@ class LatentNode(nn.Module):
         else:
             self.diffs = (torch.zeros((1,1)).cuda(), torch.zeros((1,1)).cuda(), torch.zeros((1,1)).cuda())
 
-        # Frank Ferraro2:31 PM
-        # f_{1, i} = Gumbel softmax sample of child i in level 1
-        # pi_{2, j} = logits for the Gumbel softmax sample of child j in level 2
-        # Frank Ferraro2:33 PM
-        # f_{2, j} ~ GumbelSoftmax(pi_{2,j} + \sum_i f_{1, i})
-        # I guess either "+ sum," or done according to the norm approach
-        # Frank Ferraro2:35 PM
-        # \pi_{2, j}
-
 
     def infer_all_(self, input_memory, input_lens, init_query=None, f_vals=None, template_input=None):
         """
@@ -395,7 +386,7 @@ class LatentNode(nn.Module):
         return num_of_childs
 
 
-def example_tree(num_Frames, all_dim, frame_max, padding_idx=None, use_cuda=True, nohier_mode=False, num_of_childs=5, base_layer=True):
+def example_tree(num_Frames, all_dim, frame_max, padding_idx=None, use_cuda=True, nohier_mode=False, num_of_childs=5, base_layer=True, frame_embedding=None):
     """
     An example function of building trees/dags to use in DAVAE
     num_Frames: num_latent (how many discrete values for each node? number of total unique frames for our case)
@@ -417,7 +408,8 @@ def example_tree(num_Frames, all_dim, frame_max, padding_idx=None, use_cuda=True
         dim = (all_dim[1], all_dim[0], frame_max)
         # dim = (all_dim[1], all_dim[0], all_dim[1])
 
-    frame_embedding = nn.Embedding(frame_max, all_dim[1], padding_idx=padding_idx)
+    if frame_embedding is None:
+        frame_embedding = nn.Embedding(frame_max, all_dim[1], padding_idx=padding_idx)
     print('frame_embedding: ',frame_embedding.weight.size())
     # q_theta_dist = distributions.Dirichlet(alpha)
     # def __init__(self, K, dim, nodeid="0", embeddings=None, use_attn=True, use_cuda=True, nohier_mode=False):

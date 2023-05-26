@@ -62,7 +62,7 @@ if __name__ == "__main__":
 
     args.valid_narr = './data/wiki_inv/obs_{}_0.6_TUP_DIST.txt'.format(args.data_mode)
     args.valid_narr_frames = './data/wiki_inv/obs_{}_0.6_TUP_DIST_frame_sep.txt'.format(args.data_mode)
-    args.frame_vocab_address = './data/naacl/vocab_frame_'+str(args.frame_max)+'.pkl'
+    args.frame_vocab_address = './data/naacl/vocab_frame_scenerio_'+str(args.frame_max)+'.pkl'
 
 
     config_prefix = './saved_configs/'

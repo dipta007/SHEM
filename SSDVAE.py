@@ -34,6 +34,7 @@ class SSDVAE(nn.Module):
 
         self.embd_size = emb_size # word embedding size: 300
         self.latent_dim = latent_dim  # Frame embedding size: 500
+        print('SSDVAE word_emb: ', self.embd_size, 'SSDVAE latent_dim: ', self.latent_dim)
 
         self.vocab = vocab 
         self.vocab_size = len(self.vocab.stoi.keys()) # size of word vocabulary / number of total unique words # 40000+
@@ -142,7 +143,7 @@ class SSDVAE(nn.Module):
         if True:
             enc_theta = self.theta_layer(enc_output).mean(1) # [batch_size,template]
             p_theta_sampled = F.softmax(enc_theta,-1).cuda()
-            self.template_input = F.tanh(self.template_to_frame(p_theta_sampled))
+            self.template_input = torch.tanh(self.template_to_frame(p_theta_sampled))
             self.template_decode_input = self.template_to_vocab(self.template_input)
         else:
             self.template_input = template_input

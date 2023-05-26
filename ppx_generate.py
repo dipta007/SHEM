@@ -16,7 +16,7 @@ torch.nn.Module.dump_patches = True
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description='SHEM')
+    parser = argparse.ArgumentParser(description='SSDVAE')
     parser.add_argument('--impute_with', type=int, default=0)
     parser.add_argument('--valid_data', type=str)
     parser.add_argument('--vocab', type=str)
@@ -63,8 +63,8 @@ if __name__ == "__main__":
 
     ''' NOTE: We don't use these frames for validation but the data loader needs it (we replace actual frames with __NOFRAME__'''
     args.valid_frames='./data/naacl/{}_0.6_frame.txt'.format(str(args.data_mode))
-    #args.valid_narr = '/p/data/rezaee/event-SSSDV/wiki_6_inverse_cloze/test_0.6_TUP_DIST.txt'
-    args.frame_vocab_address = './data/naacl/vocab_frame_'+str(args.frame_max)+'.pkl'
+    #args.valid_narr = '/p/data/xxxxR/event-SSSDV/wiki_6_inverse_cloze/test_0.6_TUP_DIST.txt'
+    args.frame_vocab_address = './data/naacl/vocab_frame_scenerio_'+str(args.frame_max)+'.pkl'
 
     config_prefix = './saved_configs/'
     model_prefix = './saved_models/'

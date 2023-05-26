@@ -12,7 +12,7 @@ This repository is the official implementation of [Semantically-informed Hierarc
 ```
 git clone https://github.com/dipta007/SHEM
 cd SHEM
-git checkout grp
+git checkout scn
 ```
 
 ## Conda Environment
