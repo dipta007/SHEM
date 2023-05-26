@@ -83,7 +83,7 @@ if __name__ == "__main__":
     print('config_address: ', config_address)
     with open(config_address, 'rb') as f:
         args_dict, args_info = pickle.load(f)
-        model_postfix = config_postfix[:-6] + 'pt'
+        model_postfix = config_postfix[:-3] + 'pt'
     
         args.num_of_models = int(args_dict['num_of_models'])
         args.model_prefix = model_prefix
@@ -93,3 +93,18 @@ if __name__ == "__main__":
         print('perplexity_data: ', args.valid_data)
         args_dict["WikiTestPPL"] = ppl
         print('prob: ', args.obsv_prob)
+
+
+# 21
+# 5361
+# Chain-NLL = 4.46248722076416
+# Chain-PPL = 86.70288848876953
+
+#          Chain-NLL_0 = 4.344326972961426
+#          Chain-PPL_0 = 77.04017639160156
+
+#                  Chain-NLL_1 = 4.580646991729736
+#                  Chain-PPL_1 = 97.57749938964844
+
+# perplexity_data:  ./data/masked/test_0.9_TUP.txt
+# prob:  0.9

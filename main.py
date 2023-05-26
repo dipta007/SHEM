@@ -30,13 +30,69 @@ import glob
 import sys
 import os
 from framenet_relations import get_frames_for_upper_layers
+from cloze_utils import do_ranking
+from data_utils import MAX_EVAL_SEQ_LEN, MIN_EVAL_SEQ_LEN
+
+v2 = None
 
 
 def tally_parameters(model):
     n_params = sum([p.nelement() for p in model.parameters()])
     print('* number of parameters: %d' % n_params)
 
-def monolithic_compute_loss(iteration, model, target, target_lens, latent_values, latent_root, diff, dec_outputs, use_cuda, args, train=True, topics_dict=None, real_sentence=None, next_frames_dict=None, word_to_frame=None, show=False, base_layer=True, model_no=0):
+def get_scores_for_frame(model, y_true):
+    def preprocess(frames):
+        # print(frames)
+        frames = list(filter(lambda x: x > 2, frames))
+        frames = list(set(frames))
+        return frames
+    
+    def get_score_for_instance(y_true, y_pred):
+        precision = len(set(y_true).intersection(set(y_pred))) / (1 if len(y_pred) == 0 else len(y_pred))
+        recall = len(set(y_true).intersection(set(y_pred))) / (1 if len(y_true) == 0 else len(y_true))
+        f1 = (2 * precision * recall) / (1 if (precision + recall) == 0 else (precision + recall))
+        return precision * 100.0, recall * 100.0, f1 * 100.0
+
+    latent_gumbels = model.latent_gumbels
+    y_pred = torch.argmax(latent_gumbels, dim=-1)
+        
+    precision, recall, f1 = 0.0, 0.0, 0.0
+    t_st, p_st = "", ""
+    for y, y_p in zip(y_true, y_pred):
+        n_pre, n_re, n_f1 = get_score_for_instance(preprocess(y.tolist()), preprocess(y_p.tolist()))
+        precision += n_pre
+        recall += n_re
+        f1 += n_f1
+        if False:
+            t_st += " ".join([v2.itos[v] for v in y])
+            t_st += " || "
+            p_st += " ".join([v2.itos[v] for v in y_p])
+            p_st += " || "
+
+    
+    precision /= y_true.size(0)
+    recall /= y_true.size(0)
+    f1 /= y_true.size(0)
+
+    if False:
+        with open('./debug.txt', 'a') as fp:
+            fp.write("****** f1\n")
+            # fp.write(f"{len(y_pred)}, {len(y_true)}, {len(set(y_true).intersection(set(y_pred)))}")
+            fp.write(f"Passed: {t_st}")
+            fp.write('\n')
+            fp.write(f"Predicted: {p_st}")
+            fp.write('\n')
+            fp.write(f'Precision {precision}')
+            fp.write('\n')
+            fp.write(f'Recall {recall}')
+            fp.write('\n')
+            fp.write(f'F1 {f1}')
+            fp.write('\n')
+            fp.write("****** f1\n\n")
+    return precision, recall, f1
+
+
+def monolithic_compute_loss(iteration, model, target, target_lens, latent_values, latent_root, diff, dec_outputs, use_cuda, args, train=True, topics_dict=None, real_sentence=None, next_frames_dict=None, word_to_frame=None, show=False, base_layer=True, model_no=0, true_f_vals=[]):
     """
     use this function for validation loss. NO backprop in this function.
     """
@@ -45,6 +101,7 @@ def monolithic_compute_loss(iteration, model, target, target_lens, latent_values
     frame_classifier = model.frame_classifier
     frame_classifier_total = -frame_classifier.sum((1,2)).mean()
     q_log_q_total = q_log_q.sum(-1).mean()
+    precision, recall, f1 = get_scores_for_frame(model, true_f_vals)
 
     if use_cuda:
         ce_loss = masked_cross_entropy(logits, Variable(target.cuda()), Variable(target_lens.cuda()))
@@ -55,7 +112,7 @@ def monolithic_compute_loss(iteration, model, target, target_lens, latent_values
         loss = ce_loss + q_log_q_total + frame_classifier_total
     else:
         loss = ce_loss + q_log_q_total
-    
+
     if train==True and show==True:
         print_iter_stats(iteration, loss, ce_loss, q_log_q_total, topics_dict, real_sentence, next_frames_dict, frame_classifier_total, word_to_frame, args, show=True)
     return loss, ce_loss # tensor
@@ -100,7 +157,7 @@ def run_models(models, batch, batch_lens, target, target_lens, f_vals, f_ref, vo
         if i > 0:
             base_layer = False
             frames_infer = models[i-1].latent_embs
-            # curr_f_vals = torch.argmax(models[i-1].latent_gumbels, -1)
+            curr_f_vals = torch.argmax(models[i-1].latent_gumbels, -1)
             curr_f_vals = get_frames_for_upper_layers(args, curr_f_vals, vocab2, args.obsv_prob)
 
         latent_values, latent_root, diff, dec_outputs, template_input, template_decode_input = model(batch,  batch_lens,  frames_infer,  f_vals=curr_f_vals, template_decode_input=template_decode_input, template_input=template_input)
@@ -111,15 +168,29 @@ def run_models(models, batch, batch_lens, target, target_lens, f_vals, f_ref, vo
             topics_dict, real_sentence, next_frames_dict, word_to_frame = None, None, None, None
         loss, ce_loss = monolithic_compute_loss(iteration, model, target, target_lens, latent_values, latent_root,
                                         diff, dec_outputs, use_cuda, args=args, topics_dict=topics_dict, real_sentence=real_sentence, next_frames_dict=next_frames_dict,
-                                        word_to_frame=word_to_frame, train=train, show=True, base_layer=base_layer, model_no=i)
+                                        word_to_frame=word_to_frame, train=train, show=True, base_layer=base_layer, model_no=i, true_f_vals=f_ref if i == 0 else curr_f_vals)
 
         tot_loss += loss
         tot_ce_loss += ce_loss
 
         losses.append(loss)
         ce_losses.append(ce_loss)
-
+    
     return tot_loss, tot_ce_loss, losses, ce_losses
+
+
+def get_wiki_inv_score(args, train, models, vocab, vocab2):
+    args.data_mode = 'train' if train else 'valid'
+    args.valid_narr = './data/wiki_inv/obs_{}_0.6_TUP_DIST.txt'.format(args.data_mode)
+    dataset_wiki = du.NarrativeClozeDataset(args.valid_narr, vocab, src_seq_length=MAX_EVAL_SEQ_LEN, min_seq_length=MIN_EVAL_SEQ_LEN, LM=False)
+    wiki_data_len = len(dataset_wiki)
+    print('ranking_dataset: ', wiki_data_len)
+    # Batch size during decoding is set to 1
+    wiki_batches = BatchIter(dataset_wiki, 1, sort_key=lambda x:len(x.actual), train=False, device=-1)
+    wiki_acc, wiki_accs = do_ranking(args, models, wiki_batches, vocab, vocab2, wiki_data_len, True, return_all=True)
+
+    return wiki_acc, wiki_accs
+
 
 
 def classic_train(args, args_dict, args_info):
@@ -148,6 +219,8 @@ def classic_train(args, args_dict, args_info):
     args_dict["vocab"] = len(vocab.stoi.keys())
 
     vocab2 = du.load_vocab(args.frame_vocab_address, is_Frame=True)
+    # global v2
+    # v2 = vocab2
     print("Frames-Vocab Loaded, Size {}".format(len(vocab2.stoi.keys())))
     print(vocab2.itos[:40])
     total_frames = len(vocab2.stoi.keys())
@@ -190,6 +263,8 @@ def classic_train(args, args_dict, args_info):
         bidir_mod = 2 if args.bidir else 1
 
         models = []
+
+        frame_embedding = nn.Embedding(args.total_frames, args.latent_dim, padding_idx=vocab2.stoi['<pad>'])
         for i in range(args.num_of_models):
             # Base layers
             use_pretrained = args.use_pretrained
@@ -201,7 +276,8 @@ def classic_train(args, args_dict, args_info):
                 use_packed = False
 
             latents = example_tree(args.num_latent_values, (bidir_mod*args.enc_hid_size, args.latent_dim), frame_max=args.total_frames,
-                                padding_idx=vocab2.stoi['<pad>'], use_cuda=use_cuda, nohier_mode=args.nohier, num_of_childs=children[i], base_layer=base_layer) # assume bidirectional
+                                padding_idx=vocab2.stoi['<pad>'], use_cuda=use_cuda, nohier_mode=args.nohier, num_of_childs=children[i], 
+                                base_layer=base_layer, frame_embedding=frame_embedding) # assume bidirectional
 
             hidsize = (args.enc_hid_size, args.dec_hid_size)
             model = SSDVAE(args.emb_size, hidsize, vocab, latents, vocab2, layers=args.nlayers, use_cuda=use_cuda,
@@ -282,6 +358,7 @@ def classic_train(args, args_dict, args_info):
             valid_logprobs_per_layer = [0.0] * len(models)
             valid_lengths_per_layer = [0.0] * len(models)
             valid_loss_per_layer = [0.0] * len(models)
+            valid_batch_total_size = 0
 
             with torch.no_grad():
                 for v_iteration, bl in enumerate(val_batches):
@@ -306,6 +383,8 @@ def classic_train(args, args_dict, args_info):
                         valid_loss_per_layer[i] += cl.data.clone()
                         valid_logprobs_per_layer[i] += cl.data.clone().cpu().numpy() * target_lens.sum().cpu().data.numpy()
                         valid_lengths_per_layer[i] += target_lens.sum().cpu().data.numpy()
+                    
+                    valid_batch_total_size += 1
 
             nll = valid_logprobs / valid_lengths
             ppl = np.exp(nll)
@@ -340,7 +419,7 @@ def classic_train(args, args_dict, args_info):
                 for i, model in enumerate(models):
                     model_path = os.path.join(dir_path+f"/saved_models/model_{i}_chain_"+save_file+".pt")
                     torch.save(model, model_path)
-                config_path = os.path.join(dir_path+"/saved_configs/chain_"+save_file+".pickle")
+                config_path = os.path.join(dir_path+"/saved_configs/chain_"+save_file+".pkl")
                 with open (config_path, "wb") as f:
                     pickle.dump((args_dict, args_info), f)
 
@@ -360,15 +439,15 @@ def classic_train(args, args_dict, args_info):
 
         # Increase the number of epoch
         if iteration * args.batch_size > data_len * curr_epoch:
+            get_wiki_inv_score(args, False, models, vocab, vocab2)
             print(f'Epoch {curr_epoch} took time: ', time.time() - start_time)
             curr_epoch += 1
             start_time = time.time()
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description='SSDVAE_ext')
+    parser = argparse.ArgumentParser(description='SHEM')
     parser.add_argument('--train_data', type=str)
     parser.add_argument('--valid_data', type=str)
-    parser.add_argument("--sh_file", default=None, type=str, help="The shell script running this python file.")
     parser.add_argument('--vocab', type=str, help='the vocabulary pickle file')
     parser.add_argument('--emb_size', type=int, default=300, help='size of word embeddings')
     parser.add_argument('--enc_hid_size', type=int, default=512, help='size of encoder hidden')
@@ -398,10 +477,11 @@ if __name__ == "__main__":
     parser.add_argument('--num_clauses', type=int, default=5)
     parser.add_argument('--load_opt', type=str)
     parser.add_argument('--nohier', action='store_true', help='use the nohier model instead')
-    parser.add_argument('--frame_max', type=int, default=500)
+    parser.add_argument('--frame_max', type=int, default=700)
     parser.add_argument('--obsv_prob', type=float, default=1.0,help='the percentage of observing frames')
     parser.add_argument('--template', type=int, default=20)
     parser.add_argument('--exp_num', type=str, default=1)
+    parser.add_argument('--max_decode', type=int, default=2000, help="""max sentences to be evaluated/decoded.""")
 
 
     args = parser.parse_args()

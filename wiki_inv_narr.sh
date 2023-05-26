@@ -9,3 +9,4 @@ CUDA_VISIBLE_DEVICES=0\
     --seed "${3}"\
     --data_mode "${4}"\
     --cuda \
+

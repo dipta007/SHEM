@@ -12,7 +12,7 @@ This repository is the official implementation of [Semantically-informed Hierarc
 ```
 git clone https://github.com/dipta007/SHEM
 cd SHEM
-git checkout missing_grp
+git checkout missing_scn
 ```
 
 ## Conda Environment
@@ -61,7 +61,6 @@ gdown https://drive.google.com/drive/u/1/folders/1StFmV2L5MiubGYzd5NB-weQpfun-SA
 ```
 ./test_mppx.sh $obsv_prob $exp_num $seed $data_mode
 ``` 
-
 ## ⚠️ Disclaimer
 
 Some parts of the code were inspired by [SSDVAE](https://github.com/mmrezaee/SSDVAE) implementations.

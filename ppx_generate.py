@@ -16,10 +16,9 @@ torch.nn.Module.dump_patches = True
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description='SSDVAE')
+    parser = argparse.ArgumentParser(description='SHEM')
     parser.add_argument('--impute_with', type=int, default=0)
     parser.add_argument('--valid_data', type=str)
-    parser.add_argument("--sh_file", default=None, type=str, help="The shell script running this python file.")
     parser.add_argument('--vocab', type=str)
     parser.add_argument('--batch_size', type=int, default=1, metavar='N', help='batch size')
     parser.add_argument('--seed', type=int, default=11, help='random seed')
@@ -70,7 +69,7 @@ if __name__ == "__main__":
     config_prefix = './saved_configs/'
     model_prefix = './saved_models/'
 
-    config_address = config_prefix + 'chain__emb_size_300_nlayers_2_lr_0.001_batch_size_64_seed_{}_bidir_True_num_latent_values_500_latent_dim_500_dropout_0.0_num_clauses_5_obsv_prob_{}_template_20_exp_num_{}_num_of_models_2_num_of_children_5 3.pickle'.format(str(args.seed),str(args.obsv_prob),str(args.exp_num))
+    config_address = config_prefix + 'chain__emb_size_300_nlayers_2_lr_0.001_batch_size_64_seed_{}_bidir_True_num_latent_values_500_latent_dim_500_dropout_0.0_num_clauses_5_obsv_prob_{}_template_20_exp_num_{}_num_of_models_2_num_of_children_5 3.pkl'.format(str(args.seed),str(args.obsv_prob),str(args.exp_num))
     
     config_postfix = find_file(f'exp_num_{str(args.exp_num)}_', config_prefix)
     config_address = config_prefix + config_postfix
@@ -81,7 +80,7 @@ if __name__ == "__main__":
     print('config_address: ', config_address)
     with open(config_address, 'rb') as f:
         args_dict, args_info = pickle.load(f)
-        model_postfix = config_postfix[:-6] + 'pt'
+        model_postfix = config_postfix[:-3] + 'pt'
     
         args.num_of_models = int(args_dict['num_of_models'])
         args.model_prefix = model_prefix
