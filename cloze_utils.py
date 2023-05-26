@@ -8,18 +8,27 @@ import numpy as np
 from torch.autograd import Variable
 import torch.nn.functional as F
 import data_utils as du
+import masked_data_utils as mdu
 from tqdm import tqdm
 import copy
 import os
-import csv 
-
-
-from DAG import example_tree
-from EncDec import Encoder, Decoder, Attention, fix_enc_hidden
+import csv
+import nltk
+from pprint import pprint
+nltk.download('framenet_v17', download_dir='./')
+nltk.data.path.append('./')
+from nltk.corpus import framenet as fn
 from masked_cross_entropy import masked_cross_entropy
-from data_utils import EOS_TOK, SOS_TOK, PAD_TOK, TUP_TOK, MAX_EVAL_SEQ_LEN, MIN_EVAL_SEQ_LEN
+from data_utils import (
+    EOS_TOK,
+    SOS_TOK,
+    PAD_TOK,
+    TUP_TOK,
+    MAX_EVAL_SEQ_LEN,
+    MIN_EVAL_SEQ_LEN,
+)
 from decode_utils import transform, get_tups, get_pred_events
-from framenet_relations import get_frames_for_upper_layers
+from framenet_relations import get_frames_for_upper_layers, get_parent_child_mapping
 
 
 def find_file(name, path):
@@ -30,33 +39,35 @@ def find_file(name, path):
                 found.append(file)
     if len(found) > 1:
         for i, f in enumerate(found):
-            print(f'{i}. {f}')
+            print(f"{i}. {f}")
         print()
 
-        ind = input(f'{len(found)} files found which one to choose?    ')
+        ind = input(f"{len(found)} files found which one to choose?    ")
         ind = int(ind)
         return found[ind]
     return found[0]
 
+
 def get_models(args, use_cuda):
     models = []
     for i in range(args.num_of_models):
-        model_address = args.model_prefix + f'model_{i}_' + args.model_postfix
-        with open(model_address, 'rb') as fi:
+        model_address = args.model_prefix + f"model_{i}_" + args.model_postfix
+        with open(model_address, "rb") as fi:
             if not use_cuda:
-                model = torch.load(fi, map_location=lambda storage, loc : storage)
+                model = torch.load(fi, map_location=lambda storage, loc: storage)
             else:
-                model = torch.load(fi, map_location=torch.device('cuda'))
+                model = torch.load(fi, map_location=torch.device("cuda"))
         models.append(model)
 
     for model in models:
-        if not hasattr(model.latent_root, 'nohier'):
-            model.latent_root.set_nohier(args.nohier) #for backwards compatibility
+        if not hasattr(model.latent_root, "nohier"):
+            model.latent_root.set_nohier(args.nohier)  # for backwards compatibility
 
         model.decoder.eval()
         model.set_use_cuda(use_cuda)
 
     return models
+
 
 def generate(args):
     """
@@ -73,11 +84,11 @@ def generate(args):
         use_cuda = False
     else:
         device = -1
-        use_cuda=False
+        use_cuda = False
 
-    #Load the vocab
-    vocab , _ = du.load_vocab(args.vocab)
-    vocab2 = du.load_vocab(args.frame_vocab_address,is_Frame=True)
+    # Load the vocab
+    vocab, _ = du.load_vocab(args.vocab)
+    vocab2 = du.load_vocab(args.frame_vocab_address, is_Frame=True)
 
     args.total_frames = len(vocab2.stoi.keys())
 
@@ -87,27 +98,70 @@ def generate(args):
     # Create the model
     models = get_models(args, use_cuda)
 
-    if args.ranking: # default is HARD one, the 'Inverse Narrative Cloze' in the paper
-        dataset = du.NarrativeClozeDataset(args.valid_narr, vocab, src_seq_length=MAX_EVAL_SEQ_LEN, min_seq_length=MIN_EVAL_SEQ_LEN, LM=False)
-        print('ranking_dataset: ',len(dataset))
+    if args.ranking:  # default is HARD one, the 'Inverse Narrative Cloze' in the paper
+        dataset = du.NarrativeClozeDataset(
+            args.valid_narr,
+            vocab,
+            src_seq_length=MAX_EVAL_SEQ_LEN,
+            min_seq_length=MIN_EVAL_SEQ_LEN,
+            LM=False,
+        )
+        print("ranking_dataset: ", len(dataset))
         # Batch size during decoding is set to 1
-        batches = BatchIter(dataset, 1, sort_key=lambda x:len(x.actual), train=False, device=-1)
+        batches = BatchIter(
+            dataset, 1, sort_key=lambda x: len(x.actual), train=False, device=-1
+        )
+    elif "masked_perplexity" in args and args.masked_perplexity:
+        dataset = mdu.SentenceDataset(
+            path=args.valid_data,
+            path2=args.valid_frames,
+            vocab=vocab,
+            vocab2=vocab2,
+            num_clauses=args.num_clauses,
+            add_eos=False,
+            is_ref=True,
+            obsv_prob=0.0,
+            print_valid=True,
+            masked=args.masked if "masked" in args else 0,
+        )
+        batches = BatchIter(
+            dataset,
+            args.batch_size,
+            sort_key=lambda x: len(x.text),
+            train=False,
+            device=-1,
+        )
     else:
-        # dataset = du.SentenceDataset(args.valid_data, vocab, src_seq_length=MAX_EVAL_SEQ_LEN, min_seq_length=MIN_EVAL_SEQ_LEN, add_eos=False) # put in filter pred later
-        dataset = du.SentenceDataset(path=args.valid_data, path2=args.valid_frames, vocab=vocab, vocab2=vocab2, num_clauses=args.num_clauses, add_eos=False, is_ref=True, obsv_prob=0.0, print_valid=True)
-        # Batch size during decoding is set to 1
-        batches = BatchIter(dataset, args.batch_size, sort_key=lambda x:len(x.text), train=False, device=-1)
+        dataset = du.SentenceDataset(
+            path=args.valid_data,
+            path2=args.valid_frames,
+            vocab=vocab,
+            vocab2=vocab2,
+            num_clauses=args.num_clauses,
+            add_eos=False,
+            is_ref=True,
+            obsv_prob=0.0,
+            print_valid=True,
+        )
+        batches = BatchIter(
+            dataset,
+            args.batch_size,
+            sort_key=lambda x: len(x.text),
+            train=False,
+            device=-1,
+        )
 
     data_len = len(dataset)
 
     # Create the model
-    
 
     # For reconstruction
-    if args.perplexity:
-        print('calculating perplexity')
-        loss, losses = calc_perplexity(args, models, batches, vocab, vocab2, data_len)
-        
+    if "masked_perplexity" in args and args.masked_perplexity:
+        print("calculating perplexity")
+        loss, losses = calc_masked_perplexity(
+            args, models, batches, vocab, vocab2, data_len
+        )
+
         NLL = loss
         PPL = np.exp(loss)
         print("Chain-NLL = {}".format(NLL))
@@ -116,17 +170,35 @@ def generate(args):
         for i, loss in enumerate(losses):
             NLL = loss
             PPL = np.exp(loss)
-            print("\t"*(i+1), "Chain-NLL_{} = {}".format(i, NLL))
-            print("\t"*(i+1), "Chain-PPL_{} = {}\n".format(i, PPL))
+            print("\t" * (i + 1), "Chain-NLL_{} = {}".format(i, NLL))
+            print("\t" * (i + 1), "Chain-PPL_{} = {}\n".format(i, PPL))
+
+        return PPL
+    elif args.perplexity:
+        print("calculating perplexity")
+        loss, losses = calc_perplexity(args, models, batches, vocab, vocab2, data_len)
+
+        NLL = loss
+        PPL = np.exp(loss)
+        print("Chain-NLL = {}".format(NLL))
+        print("Chain-PPL = {}\n".format(PPL))
+
+        for i, loss in enumerate(losses):
+            NLL = loss
+            PPL = np.exp(loss)
+            print("\t" * (i + 1), "Chain-NLL_{} = {}".format(i, NLL))
+            print("\t" * (i + 1), "Chain-PPL_{} = {}\n".format(i, PPL))
 
         return PPL
     elif args.schema:
         generate_from_seed(args, models, batches, vocab, data_len)
-    elif args.ranking: # True
-        ranked_acc = do_ranking(args, models, batches, vocab, vocab2, data_len, use_cuda)
+    elif args.ranking:  # True
+        ranked_acc = do_ranking(
+            args, models, batches, vocab, vocab2, data_len, use_cuda
+        )
         return ranked_acc
     else:
-#        sample_outputs(models, vocab)
+        #        sample_outputs(models, vocab)
         reconstruct(args, models, batches, vocab)
 
 
@@ -142,7 +214,9 @@ def is_it_correct(nll, sz, num_of_models, target=0):
 
 
 # Inverse Narrative Cloze
-def do_ranking(args, models, batches, vocab, vocab2, data_len, use_cuda, return_all=False):
+def do_ranking(
+    args, models, batches, vocab, vocab2, data_len, use_cuda, return_all=False
+):
     print("RANKING")
     ranked_acc = 0.0
     ranked_accs = [0.0] * len(models)
@@ -150,7 +224,20 @@ def do_ranking(args, models, batches, vocab, vocab2, data_len, use_cuda, return_
     tup_idx = vocab.stoi[TUP_TOK]
 
     for iteration, bl in enumerate(tqdm(batches)):
-        all_texts = [bl.actual, bl.actual_tgt, bl.dist1, bl.dist1_tgt, bl.dist2, bl.dist2_tgt, bl.dist3, bl.dist3_tgt, bl.dist4, bl.dist4_tgt, bl.dist5, bl.dist5_tgt] # each is a tup
+        all_texts = [
+            bl.actual,
+            bl.actual_tgt,
+            bl.dist1,
+            bl.dist1_tgt,
+            bl.dist2,
+            bl.dist2_tgt,
+            bl.dist3,
+            bl.dist3_tgt,
+            bl.dist4,
+            bl.dist4_tgt,
+            bl.dist5,
+            bl.dist5_tgt,
+        ]  # each is a tup
 
         assert len(all_texts) == 12, "12 = 6 * 2."
 
@@ -168,9 +255,9 @@ def do_ranking(args, models, batches, vocab, vocab2, data_len, use_cuda, return_
                     break
             if first_tup == -1:
                 print("WARNING: First TUP is -1")
-            src_tup = Variable(bl.actual[0][:, :first_tup+1].view(1, -1))
+            src_tup = Variable(bl.actual[0][:, : first_tup + 1].view(1, -1))
             src_lens = torch.LongTensor([src_tup.shape[1]])
-            f_vals = torch.LongTensor([[0,0,0,0,0]])
+            f_vals = torch.LongTensor([[0, 0, 0, 0, 0]])
 
             if use_cuda:
                 src_tup = src_tup.cuda()
@@ -184,45 +271,65 @@ def do_ranking(args, models, batches, vocab, vocab2, data_len, use_cuda, return_
                 # initialize for every model
                 # will iterate 2 at a time using iterator and next
                 vars_iter = iter(all_texts_vars)
-                
+
                 frames_infer = None
                 curr_f_vals = f_vals
                 if i > 0:
-                    frames_infer = models[i-1].latent_embs
-                    curr_f_vals = torch.argmax(models[i-1].latent_gumbels, -1)
+                    frames_infer = models[i - 1].latent_embs
+                    curr_f_vals = torch.argmax(models[i - 1].latent_gumbels, -1)
                     curr_f_vals = get_frames_for_upper_layers(args, curr_f_vals, vocab2)
 
-                dhidden, latent_embs = model(src_tup, src_lens, frames_infer, f_vals=curr_f_vals, encode_only=True)
+                dhidden, latent_embs = model(
+                    src_tup,
+                    src_lens,
+                    frames_infer,
+                    f_vals=curr_f_vals,
+                    encode_only=True,
+                )
 
                 # Latent and hidden have been initialized with the first tuple
                 for j, tup in enumerate(vars_iter):
                     ## INIT FEED AND DECODE before every sentence.
                     if use_cuda:
-                        model.decoder.init_feed_(Variable(torch.zeros(1, model.decoder.attn_dim).cuda()))
+                        model.decoder.init_feed_(
+                            Variable(torch.zeros(1, model.decoder.attn_dim).cuda())
+                        )
                     else:
-                        model.decoder.init_feed_(Variable(torch.zeros(1, model.decoder.attn_dim)))
+                        model.decoder.init_feed_(
+                            Variable(torch.zeros(1, model.decoder.attn_dim))
+                        )
 
                     next_tup = next(vars_iter)
                     if use_cuda:
-                        _, _, _, dec_outputs, _, _  = model.train(tup[0].cuda(), dhidden, latent_embs, [])
+                        _, _, _, dec_outputs, _, _ = model.train(
+                            tup[0].cuda(), dhidden, latent_embs, []
+                        )
                     else:
-                        _, _, _, dec_outputs, _, _  = model.train(tup[0], dhidden, latent_embs, [])
+                        _, _, _, dec_outputs, _, _ = model.train(
+                            tup[0], dhidden, latent_embs, []
+                        )
 
-                    logits = model.logits.transpose(0,1).contiguous() # convert to [batch, seq, vocab]
-                    curr_nll = masked_cross_entropy(logits, next_tup[0].cuda(), Variable(next_tup[1]).cuda())
+                    logits = model.logits.transpose(
+                        0, 1
+                    ).contiguous()  # convert to [batch, seq, vocab]
+                    curr_nll = masked_cross_entropy(
+                        logits, next_tup[0].cuda(), Variable(next_tup[1]).cuda()
+                    )
 
                     nlls[i] += copy.deepcopy([curr_nll])
 
-                    if i == 0: # For the first model
+                    if i == 0:  # For the first model
                         nll += copy.deepcopy([curr_nll])
-                    else: # For the other models
+                    else:  # For the other models
                         nll[j] += curr_nll
 
             assert len(nll) == 6, "6 targets."
             for i in range(len(models)):
                 assert len(nlls[i]) == 6, f"6 targets on layer {i+1}"
-            
-            ranked_acc += is_it_correct(nll, len(all_texts_vars) // 2, args.num_of_models)
+
+            ranked_acc += is_it_correct(
+                nll, len(all_texts_vars) // 2, args.num_of_models
+            )
             for i in range(len(models)):
                 ranked_accs[i] += is_it_correct(nlls[i], len(all_texts_vars) // 2, 1)
 
@@ -230,7 +337,7 @@ def do_ranking(args, models, batches, vocab, vocab2, data_len, use_cuda, return_
             now = []
             for i in range(len(all_texts_vars) // 2):
                 curr = [iteration]
-                txt = " ".join([vocab.itos[v] for v in all_texts[i*2][0][0]])
+                txt = " ".join([vocab.itos[v] for v in all_texts[i * 2][0][0]])
                 curr.extend([txt])
                 for j in range(len(models)):
                     ppl = torch.exp(nlls[j][i] / 1).item()
@@ -238,7 +345,9 @@ def do_ranking(args, models, batches, vocab, vocab2, data_len, use_cuda, return_
                     curr.append(is_it_correct(nlls[j], len(all_texts_vars) // 2, 1))
                 ppl_combined = torch.exp(nll[i] / args.num_of_models).item()
                 curr.append(str(round(ppl_combined, 2)))
-                curr.append(is_it_correct(nll, len(all_texts_vars) // 2, args.num_of_models))
+                curr.append(
+                    is_it_correct(nll, len(all_texts_vars) // 2, args.num_of_models)
+                )
                 curr.append(i == 0)
                 now.append(curr)
                 # print(iteration, txt, ppl, is_it_correct(nlls[i], len(all_texts_vars) // 2, 1), ppl_combined, is_it_correct(nll, len(all_texts_vars) // 2, args.num_of_models), i==0)
@@ -246,7 +355,7 @@ def do_ranking(args, models, batches, vocab, vocab2, data_len, use_cuda, return_
             now.append([])
 
             # low perplexity == top ranked sentence - correct answer is the first one of course
-            
+
             # all_texts_str = [transform(text[0].data.numpy()[0], vocab.itos) for text in all_texts_vars]
             # for v in all_texts_str:
             #     print(v)
@@ -254,23 +363,23 @@ def do_ranking(args, models, batches, vocab, vocab2, data_len, use_cuda, return_
             # min_index = np.argmin(pps)
             # if min_index == 0:
             #     ranked_acc += 1
-                # print("TARGET: {}".format(transform(all_texts_vars[1][0].data.numpy()[0], vocab.itos)))
-                # print("CORRECT: {}".format(transform(all_texts_vars[1][0].data.numpy()[0], vocab.itos)))
-            #else:
-                # print the ones that are wrong
-                # print("TARGET: {}".format(transform(all_texts_vars[1][0].data.numpy()[0], vocab.itos)))
-                # print("WRONG: {}".format(transform(all_texts_vars[min_index+2][0].data.numpy()[0], vocab.itos)))
+            # print("TARGET: {}".format(transform(all_texts_vars[1][0].data.numpy()[0], vocab.itos)))
+            # print("CORRECT: {}".format(transform(all_texts_vars[1][0].data.numpy()[0], vocab.itos)))
+            # else:
+            # print the ones that are wrong
+            # print("TARGET: {}".format(transform(all_texts_vars[1][0].data.numpy()[0], vocab.itos)))
+            # print("WRONG: {}".format(transform(all_texts_vars[min_index+2][0].data.numpy()[0], vocab.itos)))
 
-            if (iteration+1) == args.max_decode:
+            if (iteration + 1) == args.max_decode:
                 print("Max decode reached. Exiting.")
                 break
 
-    ranked_acc /= (iteration+1) * 1/100 # multiplying to get percent
+    ranked_acc /= (iteration + 1) * 1 / 100  # multiplying to get percent
     print("Average acc(%): {}\n".format(ranked_acc))
 
     for i in range(len(models)):
-        ranked_accs[i] /= (iteration+1) * 1/100 # multiplying to get percent
-        print("\t"*(i+1), "Average acc(%)_{}: {}\n".format(i, ranked_accs[i]))
+        ranked_accs[i] /= (iteration + 1) * 1 / 100  # multiplying to get percent
+        print("\t" * (i + 1), "Average acc(%)_{}: {}\n".format(i, ranked_accs[i]))
 
     if return_all:
         return ranked_acc, ranked_accs
@@ -289,11 +398,11 @@ def calc_perplexity_avg_line(args, model, batches, vocab, data_len):
         else:
             batch = Variable(batch, volatile=True)
 
-        _, _, _, dec_outputs, _, _  = model(batch, batch_lens)
+        _, _, _, dec_outputs, _, _ = model(batch, batch_lens)
 
         logits = model.logits_out(dec_outputs).cpu()
 
-        logits = logits.transpose(0,1).contiguous() # convert to [batch, seq, vocab]
+        logits = logits.transpose(0, 1).contiguous()  # convert to [batch, seq, vocab]
 
         ce_loss = masked_cross_entropy(logits, Variable(target), Variable(target_lens))
         total_loss = total_loss + ce_loss.data[0]
@@ -304,6 +413,7 @@ def calc_perplexity_avg_line(args, model, batches, vocab, data_len):
     print(data_len)
 
     return total_loss / data_len
+
 
 def calc_perplexity(args, models, batches, vocab, vocab2, data_len):
     total_loss = 0.0
@@ -329,23 +439,152 @@ def calc_perplexity(args, models, batches, vocab, vocab2, data_len):
                 frames_infer = None
                 curr_f_vals = f_vals
                 if i > 0:
-                    frames_infer = models[i-1].latent_embs
-                    curr_f_vals = torch.argmax(models[i-1].latent_gumbels, -1)
+                    frames_infer = models[i - 1].latent_embs
+                    curr_f_vals = torch.argmax(models[i - 1].latent_gumbels, -1)
                     curr_f_vals = get_frames_for_upper_layers(args, curr_f_vals, vocab2)
 
-                _, _, _, _, _, _  = model(batch, batch_lens, frames_infer, f_vals=curr_f_vals)
-                logits = model.logits.transpose(0,1).contiguous() # convert to [batch, seq, vocab]
+                _, _, _, _, _, _ = model(
+                    batch, batch_lens, frames_infer, f_vals=curr_f_vals
+                )
+                logits = model.logits.transpose(
+                    0, 1
+                ).contiguous()  # convert to [batch, seq, vocab]
 
-                ce_loss = masked_cross_entropy(logits, Variable(target).cuda(), Variable(target_lens).cuda())
+                ce_loss = masked_cross_entropy(
+                    logits, Variable(target).cuda(), Variable(target_lens).cuda()
+                )
 
                 losses[i] += ce_loss.cpu().item() * target_lens.float().sum()
                 words[i] += target_lens.sum()
-                
+
                 total_loss += ce_loss.cpu().item() * target_lens.float().sum()
                 total_words += target_lens.sum()
 
             iters += 1
 
+    print(iters)
+    print(data_len)
+
+    total_avg_loss = total_loss / total_words.float()
+    avg_losses = []
+    for i in range(args.num_of_models):
+        curr_ppl = losses[i] / words[i].float()
+        avg_losses.append(curr_ppl)
+
+    return total_avg_loss, avg_losses
+
+
+def get_parent_child_mapping_for_scenerio(frame_max):
+    from collections import defaultdict
+
+    scenarios = fn.frames(r"(?i)_scenario")
+    scenario_dict = {s.name: s for s in scenarios}
+    frame_to_scenario = defaultdict(set)
+
+    for scenario_name, scenario_obj in scenario_dict.items():
+        for sub in scenario_obj.frameRelations:
+            frame_to_scenario[sub["subFrame"].name].add(scenario_obj.name)
+
+    mp = {}
+    for key, val in frame_to_scenario.items():
+        p_no = key
+        if p_no not in mp:
+            mp[p_no] = []
+
+        for v in val:
+            mp[p_no].append(v)
+
+    cnt = 0
+    for k, v in mp.items():
+        mp[k] = list(set(v))
+
+        if len(mp[k]) > 0:
+            cnt += 1
+
+    print("Present parent frame:", cnt, "for frames:", frame_max)
+
+    return mp
+
+
+def which_frame(i_sen, o_sen, i_frame, o_frame, vocab, vocab2, frame_scenarios):
+    i_sen = " ".join([vocab.itos[i] for i in i_sen[0].tolist()])
+    o_sen = " ".join([vocab.itos[i] for i in o_sen[0].tolist()])
+
+    i_sen = i_sen.split(" <TUP> ")
+    o_sen = o_sen.split(" <TUP> ")
+
+    i_frame = [vocab2.itos[i] for i in i_frame[0].tolist()]
+    o_frame = [vocab2.itos[i] for i in o_frame[0].tolist()]
+
+    for i in range(len(o_sen)):
+        if o_sen[i] not in i_sen:
+            i_f = i_frame[i]
+            o_f = o_frame[i]
+            i_sf = frame_scenarios.get(i_f, ["None"])
+            o_sf = frame_scenarios.get(o_f, ["None"])
+
+            print(i_sf, o_sf)
+            return len(set(i_sf).intersection(set(o_sf))) > 0
+
+
+def calc_masked_perplexity(args, models, batches, vocab, vocab2, data_len):
+    frame_scenarios = get_parent_child_mapping_for_scenerio(3020)
+    total_loss = 0.0
+    iters = 0
+    total_words = 0
+
+    losses = [0.0] * args.num_of_models
+    words = [0] * args.num_of_models
+
+    acc, tot = 0, 0
+    for bl in tqdm(batches):
+        batch, batch_lens = bl.text
+        target, target_lens = bl.target
+        f_vals, f_vals_lens = bl.frame
+        f_ref, f_ref_lens = bl.ref
+
+        with torch.no_grad():
+            if args.cuda:
+                batch = Variable(batch.cuda())
+                f_vals = Variable(f_vals.cuda())
+                target = Variable(target.cuda())
+            else:
+                batch = Variable(batch)
+                f_vals = Variable(f_vals)
+                target = Variable(target)
+
+            for i, model in enumerate(models):
+                frames_infer = None
+                curr_f_vals = f_vals
+                if i > 0:
+                    frames_infer = models[i - 1].latent_embs
+                    curr_f_vals = torch.argmax(models[i - 1].latent_gumbels, -1)
+                    curr_f_vals = get_frames_for_upper_layers(args, curr_f_vals, vocab2)
+
+                model(
+                    (batch, target),
+                    (batch_lens, target_lens),
+                    frames_infer,
+                    f_vals=curr_f_vals,
+                )
+                logits = model.logits.transpose(
+                    0, 1
+                ).contiguous()  # convert to [batch, seq, vocab]
+
+                ce_loss = masked_cross_entropy(
+                    logits, Variable(target).cuda(), Variable(target_lens).cuda()
+                )
+
+                losses[i] += ce_loss.cpu().item() * target_lens.float().sum()
+                words[i] += target_lens.sum()
+
+                dec_words = torch.argmax(logits, -1)
+                dec_frames = torch.argmax(model.latent_gumbels, -1)
+
+                total_loss += ce_loss.cpu().item() * target_lens.float().sum()
+                total_words += target_lens.sum()
+
+            iters += 1
     print(iters)
     print(data_len)
 
@@ -366,7 +605,7 @@ def sample_outputs(model, vocab):
         val3 = np.random.randint(38)
         val4 = np.random.randint(12)
         val5 = np.random.randint(6)
-        values = [247,12,15,val4,1]
+        values = [247, 12, 15, val4, 1]
         outputs = model.decode(values)
 
         print("Reconstruct: {}\n\n".format(transform(outputs, vocab.itos)))
@@ -388,19 +627,28 @@ def generate_from_seed(args, model, batches, vocab, data_len):
         else:
             batch = Variable(batch, volatile=True)
 
-
-        src_lens= torch.LongTensor([batch.size(1)])
-        dhidden, latent_values = model(batch, src_lens, encode_only=True) #get latent encoding for seed
+        src_lens = torch.LongTensor([batch.size(1)])
+        dhidden, latent_values = model(
+            batch, src_lens, encode_only=True
+        )  # get latent encoding for seed
         model.decoder.init_feed_(Variable(torch.zeros(1, model.decoder.attn_dim)))
-        _, _, dhidden, dec_outputs  = model.train(batch, 1, dhidden, latent_values, [], return_hid=True)  #decode seed
+        _, _, dhidden, dec_outputs = model.train(
+            batch, 1, dhidden, latent_values, [], return_hid=True
+        )  # decode seed
 
-        #print("seq len {}, decode after {} steps".format(seq_len, i+1))
+        # print("seq len {}, decode after {} steps".format(seq_len, i+1))
         # beam set current state to last word in the sequence
         beam_inp = batch[:, -1]
 
-                # init beam initializesthe beam with the last sequence element
-        outputs = model.beam_decode(beam_inp, dhidden, latent_values, args.beam_size, args.max_len_decode, init_beam=True)
-
+        # init beam initializesthe beam with the last sequence element
+        outputs = model.beam_decode(
+            beam_inp,
+            dhidden,
+            latent_values,
+            args.beam_size,
+            args.max_len_decode,
+            init_beam=True,
+        )
 
         print("TRUE: {}".format(transform(batch.data.squeeze(), vocab.itos)))
         print("Reconstruct: {}\n\n".format(transform(outputs, vocab.itos)))
@@ -415,13 +663,21 @@ def reconstruct(args, model, batches, vocab):
         else:
             batch = Variable(batch, volatile=True)
 
-        outputs = model(batch, batch_lens, str_out=True, beam_size=args.beam_size, max_len_decode=args.max_len_decode)
+        outputs = model(
+            batch,
+            batch_lens,
+            str_out=True,
+            beam_size=args.beam_size,
+            max_len_decode=args.max_len_decode,
+        )
 
         print("TRUE: {}".format(transform(batch.data.squeeze(), vocab.itos)))
         print("Reconstruct: {}\n\n".format(transform(outputs, vocab.itos)))
 
 
-def schema_constraint(cands, prev_voc, curr_verbs, min_len_decode=0, step=0, eos_idx=EOS_TOK):
+def schema_constraint(
+    cands, prev_voc, curr_verbs, min_len_decode=0, step=0, eos_idx=EOS_TOK
+):
     """
     Constraints to use during decoding,
     Prevents the model from producing schemas that are obviously wrong (have repeated
@@ -437,12 +693,12 @@ def schema_constraint(cands, prev_voc, curr_verbs, min_len_decode=0, step=0, eos
     LOW = -1e20
     K = cands.shape[0]
 
-    for i in range(K): #for each beam
-        #Replace previous vocabulary items with low probability
+    for i in range(K):  # for each beam
+        # Replace previous vocabulary items with low probability
         beam_prev_voc = prev_voc[i]
         cands[i, beam_prev_voc] = LOW
 
-        #Replace verbs already used with low probability
+        # Replace verbs already used with low probability
         for verb in curr_verbs[i]:
             cands[i, verb] = LOW
 
@@ -458,15 +714,15 @@ def update_verb_list(verb_list, b, tup_idx=4):
     verb_list is a beam_size sized list of list, with the ith list having a list of verb ids used in the ith beam
     so far
     """
-    #First need to update based on prev ks
+    # First need to update based on prev ks
     if len(b.prev_ks) > 1:
-        new_verb_list = [[]]*b.size
+        new_verb_list = [[]] * b.size
         for i in range(b.size):
             new_verb_list[i] = list(verb_list[b.prev_ks[-1][i]])
     else:
-        new_verb_list =verb_list
+        new_verb_list = verb_list
 
-    #update the actual lists
+    # update the actual lists
     if len(b.next_ys) == 2:
         for i, li in enumerate(new_verb_list):
             li.append(b.next_ys[-1][i])

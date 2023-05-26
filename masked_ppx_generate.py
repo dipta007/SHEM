@@ -16,8 +16,9 @@ torch.nn.Module.dump_patches = True
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description='DAVAE')
+    parser = argparse.ArgumentParser(description='SSDVAE')
     parser.add_argument('--impute_with', type=int, default=0)
+    parser.add_argument("--wandb_project", default='deleteme', type=str, help="wandb project")
     parser.add_argument('--valid_data', type=str)
     parser.add_argument("--sh_file", default=None, type=str, help="The shell script running this python file.")
     parser.add_argument('--vocab', type=str)
@@ -35,10 +36,11 @@ if __name__ == "__main__":
     parser.add_argument('--ranking',  action='store_true', help="""N cloze ranking""")
     parser.add_argument('--max_decode', type=int, default=2000, help="""max sentences to be evaluated/decoded.""")
     parser.add_argument('--num_clauses', type=int,default=5)
-    parser.add_argument('--exp_num', type=str,default=5)
     parser.add_argument('--obsv_prob',  type=float, default=0, help='Beam size')
     parser.add_argument('--NYT_Noah_type',type=str,help='Noah val or test? inverse narrative cloze?')
+    parser.add_argument('--exp_num', type=str,default=5)
     parser.add_argument('--data_mode',default=None, type=str,help="valid or test?")
+    parser.add_argument('--masked', action='store_true', help="Masked or not?")
 
     path = os.path.dirname(os.path.realpath(__file__))
     args = parser.parse_args()
@@ -55,29 +57,29 @@ if __name__ == "__main__":
 
     args.frame_max = 500
 
-# ---------------  Wiki Inverse Narrative Cloze ---------------------
     args.cuda = True
     args.template = 20
-    args.batch_size = 512
-    args.vocab = './data/scenario/vocab_sen_50k.pickle'
+    args.vocab='./data/scenario/vocab_sen_50k.pickle'
+    args.valid_data = './data/masked/{}_0.9_TUP.txt'.format(str(args.data_mode))
+    args.masked_perplexity=True
+    args.batch_size=256
 
-    args.valid_narr = './data/wiki_inv/obs_{}_0.6_TUP_DIST.txt'.format(args.data_mode)
-    args.valid_narr_frames = './data/wiki_inv/obs_{}_0.6_TUP_DIST_frame_sep.txt'.format(args.data_mode)
+    ''' NOTE: We don't use these frames for validation but the data loader needs it (we replace actual frames with __NOFRAME__'''
+    args.valid_frames='./data/masked/{}_0.9_frame.txt'.format(str(args.data_mode))
+    #args.valid_narr = '/p/data/rezaee/event-SSSDV/wiki_6_inverse_cloze/test_0.6_TUP_DIST.txt'
     args.frame_vocab_address = './data/scenario/vocab_frame_scenerio_'+str(args.frame_max)+'.pickle'
-
 
     config_prefix = './saved_configs/'
     model_prefix = './saved_models/'
 
-    config_address = config_prefix + 'chain__emb_size_300_nlayers_2_lr_0.001_batch_size_64_seed_{}_bidir_True_num_latent_values_500_latent_dim_500_dropout_0.0_num_clauses_5_obsv_prob_{}_template_20_exp_num_{}_num_of_models_2_num_of_children_5 3.pickle'.format(str(args.seed),str(args.obsv_prob),str(args.exp_num))
+    config_address = config_prefix + 'chain__emb_size_300_nlayers_2_lr_0.001_batch_size_64_seed_{}_bidir_True_num_latent_values_500_latent_dim_500_dropout_0.0_num_clauses_5_obsv_prob_{}_template_20_exp_num_{}_num_of_models_2_num_of_children_5 3.pkl'.format(str(args.seed),str(args.obsv_prob),str(args.exp_num))
     
     config_postfix = find_file(f'exp_num_{str(args.exp_num)}_', config_prefix)
     config_address = config_prefix + config_postfix
     experiment_name = 'wiki_valid_{}_eps_{}_num_{}_seed_{}'.format('chain_event_',str(args.obsv_prob),str(args.exp_num),str(args.seed))
-    args.ranking = True
 
     print('prob: ', args.obsv_prob)
-    print('cloze_data: ', args.valid_data)
+    print('perplexity_data: ', args.valid_data)
     print('config_address: ', config_address)
     with open(config_address, 'rb') as f:
         args_dict, args_info = pickle.load(f)
@@ -86,6 +88,8 @@ if __name__ == "__main__":
         args.num_of_models = int(args_dict['num_of_models'])
         args.model_prefix = model_prefix
         args.model_postfix = model_postfix
-        
-        ranked_acc = generate(args)
-        print('ranked_acc: ',ranked_acc)
+
+        ppl = generate(args)
+        print('perplexity_data: ', args.valid_data)
+        args_dict["WikiTestPPL"] = ppl
+        print('prob: ', args.obsv_prob)

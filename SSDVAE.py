@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import numpy as np
 from torch.autograd import Variable
 from EncDec import Encoder, Decoder
 import torch.nn.functional as F
@@ -128,6 +129,11 @@ class SSDVAE(nn.Module):
             ?n_best: not using any more
             encode_only: Only encoding, no string output/decode
         """
+        masked_input = isinstance(input, tuple)
+        if masked_input:
+            input, target = input
+            seq_lens, target_lens = seq_lens
+
         batch_size = input.size(0)
         if str_out: # use batch size 1 if trying to get actual output
             assert batch_size == 1
@@ -194,7 +200,10 @@ class SSDVAE(nn.Module):
         else:
             self.decoder.init_feed_(Variable(torch.zeros(batch_size, self.decoder.attn_dim)))
 
-        return self.train(input, dhidden, latent_embs, diffs)
+        if masked_input:
+            return self.train(target, dhidden, latent_embs, diffs)
+        else:
+            return self.train(input, dhidden, latent_embs, diffs)
 
 
     def train(self, input, dhidden, latent_embs, diffs, return_hid=False, use_eos=False):

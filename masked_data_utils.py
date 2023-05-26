@@ -178,7 +178,7 @@ class SentenceDataset(ttdata.Dataset):
     'Data set which has a single sentence per line'
 
     def __init__(self, path, path2, vocab, vocab2, num_clauses, src_seq_length=None, 
-                    min_seq_length=0, n_cloze=False, add_eos=True, print_valid=False, is_ref=True, obsv_prob=1.0):
+                    min_seq_length=0, n_cloze=False, add_eos=True, print_valid=False, is_ref=True, obsv_prob=1.0, masked=False):
 
         """
         Args
@@ -217,13 +217,29 @@ class SentenceDataset(ttdata.Dataset):
                     obs_frame_len = len(obs_frames_idx)
                     real_frame_len = len(true_frame.split())
 
-                    # frame += (num_clauses-real_frame_len)*" <pad>"                
                     real_line = [word.lower() if word!='<TUP>' else word for word in line.split()]
+                    masked_text, masked_clause = None, None
+                    if masked or True:
+                        masked_line = [word.lower() if word!='<TUP>' else word for word in f.readline().split()]
+
                     line = " ".join(real_line)
-                    true_text = " ".join(line.split()[:cut_off])
+                    if masked or True:
+                        masked_line = " ".join(masked_line)
+
+                    true_text = " <TUP> ".join(line.split(' <TUP> ')[:num_clauses])
+                    if masked or True:
+                        masked_text = [sen for sen in masked_line.split(' <TUP> ') if sen in true_text.split(' <TUP> ')]
+                        masked_text = " <TUP> ".join(masked_text)
+
                     text = true_text
-                    clause_split = text.split('<TUP>')
-                    good_clause = "<TUP>".join([clause_split[idx] for idx in obs_frames_idx])
+                    if masked or True:
+                        masked_text = masked_text
+
+                    clause_split = text.split(' <TUP> ')
+                    good_clause = " <TUP> ".join([clause_split[idx] for idx in obs_frames_idx])
+                    if masked or True:
+                        masked_clause_split = masked_text.split(' <TUP> ')
+                        masked_clause = " <TUP> ".join([sen for sen in masked_clause_split if sen in good_clause.split(' <TUP> ')])
 
                     ref_frames = obs_frames   
                     obs_frames_select = [ref_frames[idx] if selector[idx]==1 else '__NOFRAME__' for idx, _ in enumerate(ref_frames) ]
@@ -236,6 +252,10 @@ class SentenceDataset(ttdata.Dataset):
                     obs_frames_select += (num_clauses-len(obs_frames_select.split())) * " <pad>"
                     ref_frames += (num_clauses-len(ref_frames.split())) * " <pad>"
 
+                    if not masked:
+                        masked_clause = good_clause
+                        masked_text = text
+
                     # frame = obs_frames
                     if "__NOFRAME__" in ref_frames.split():
                         print('Faulty: ')
@@ -245,8 +265,8 @@ class SentenceDataset(ttdata.Dataset):
 
                     else:
                         if is_ref:
-                            if len(good_clause.split())>0:
-                                examples.append(ttdata.Example.fromlist([good_clause, good_clause, obs_frames_select, ref_frames, true_text, true_frame], fields))
+                            if len(good_clause.split())>0 and len(masked_clause.split())>0:
+                                examples.append(ttdata.Example.fromlist([masked_clause, good_clause, obs_frames_select, ref_frames, true_text, true_frame], fields))
                         else:
                             if len(good_clause.split())>0:
                                 examples.append(ttdata.Example.fromlist([text, text, frame], fields))

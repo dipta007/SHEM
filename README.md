@@ -12,7 +12,7 @@ This repository is the official implementation of [Semantically-informed Hierarc
 ```
 git clone https://github.com/dipta007/SHEM
 cd SHEM
-git checkout scn
+git checkout missing_grp
 ```
 
 ## Conda Environment
@@ -34,7 +34,7 @@ conda activate shem
 pip install gdown
 mkdir saved_models
 mkdir saved_configs
-gdown https://drive.google.com/drive/u/1/folders/1YUfHGdyVXONtvbJQCbBN0OA0ibXP82bw -O ./data --folder
+gdown https://drive.google.com/drive/u/1/folders/1StFmV2L5MiubGYzd5NB-weQpfun-SA6I -O ./data --folder
 ```
 
 
@@ -57,6 +57,10 @@ gdown https://drive.google.com/drive/u/1/folders/1YUfHGdyVXONtvbJQCbBN0OA0ibXP82
 ```
 ./wiki_inv_narr.sh $obsv_prob $exp_num $seed $data_mode
 ```
+#### Masked Event Prediction:
+```
+./test_mppx.sh $obsv_prob $exp_num $seed $data_mode
+``` 
 
 ## ⚠️ Disclaimer
 
