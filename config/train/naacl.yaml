@@ -1,0 +1,41 @@
+defaults:
+  - base_train
+
+trainer:
+  _target_: trainers.naacl_trainer.NaaclTrainer
+  _partial_: True
+
+  optimizer:
+    _partial_: True
+    _target_: torch.optim.Adam
+    lr: 0.00002
+
+  model:
+    _partial_: True
+    transformer: './data/BART/base'
+    _target_: models.naacl.naacl_model.NaaclModel
+
+model:
+  emb_size: 300
+  enc_hid_size: 768
+  dec_hid_size: 768
+  nlayers: 1
+  enc_dropout: 0.70
+  clip: 5.0
+  bidir: 1
+  alpha_1: 0.1
+  alpha_2: 0.1
+  beta_1: 1.0
+  beta_2: 1.0
+  gamma_1: 0.1
+  gamma_2: 0.1
+  delta: 20.0
+  latent_dim: ${train.model.enc_hid_size}
+  tau: 0.5
+  moco_t: 0.1
+  num_of_children: [5, 1]
+  template: 20
+  vocab_size: 'from code'
+  num_latent_values: 'from code'
+  frame_pad_idx: 'from code'
+  dropout: 0.5

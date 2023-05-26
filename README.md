@@ -12,7 +12,7 @@ This repository is the official implementation of [Semantically-informed Hierarc
 ```
 git clone https://github.com/dipta007/SHEM
 cd SHEM
-git checkout missing_scn
+git checkout event_similarity
 ```
 
 ## Conda Environment
@@ -25,6 +25,14 @@ pip install torchtext==0.2.3
 pip install -U scikit-learn
 conda install -c conda-forge pytablewriter
 conda install -c anaconda pandas
+pip install hydra-core --upgrade
+pip install hydra_colorlog --upgrade
+pip install wandb
+pip install prettytable
+pip install transformers
+conda install -c conda-forge spacy
+conda install -c conda-forge cupy
+python -m spacy download en_core_web_trf
 pip install gdown
 ```
 
@@ -32,35 +40,22 @@ pip install gdown
 ```
 conda activate shem
 pip install gdown
-mkdir saved_models
-mkdir saved_configs
-gdown https://drive.google.com/drive/u/1/folders/1StFmV2L5MiubGYzd5NB-weQpfun-SA6I -O ./data --folder
+gdown https://drive.google.com/drive/u/1/folders/1s16s33Fwgt1MNk7_YO7iJO32gW2TZvrv -O ./data --folder
 ```
 
 
 ## Usage
 ### Training:
 ```
-./train.sh $obsv_prob $exp_num $seed
+python train.py +experiment=naacl ++exp_num=$exp_num ++seed=$SEED ++debug=False
 ```
 
 ### Evaluation:
 
-#### data_mode:
- {'valid','test'}
+### test_type:
+ {'sim-hard', 'sim-ext', 'sim-ext'}
 
-#### Perplexity:
+#### similarity evaluation:
 ```
-./test_ppx.sh $obsv_prob $exp_num $seed $data_mode
+python test.py --exp_name=naacl_$exp_num --test_type=$test_type
 ```
-#### Wiki Inverse Narrative Cloze:
-```
-./wiki_inv_narr.sh $obsv_prob $exp_num $seed $data_mode
-```
-#### Masked Event Prediction:
-```
-./test_mppx.sh $obsv_prob $exp_num $seed $data_mode
-``` 
-## ⚠️ Disclaimer
-
-Some parts of the code were inspired by [SSDVAE](https://github.com/mmrezaee/SSDVAE) implementations.

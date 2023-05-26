@@ -1,0 +1,13 @@
+epochs: 100
+validate_every: 1000
+
+early_stopping:
+  enabled: True
+  patience: 10
+  metric: val/ppl
+  goal: min
+
+desired_batch_size: 512
+
+model_dir: ${hydra:run.dir}/models
+checkpoint_dir: ${hydra:run.dir}/checkpoints

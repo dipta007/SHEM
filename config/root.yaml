@@ -1,0 +1,29 @@
+# Required to make the "experiments" dir the default one for the output of the models
+hydra:
+  job:
+    name: ${exp_name}
+  run:
+    dir: ./experiments/${exp_name}
+  job_logging:
+    handlers:
+      file:
+        filename: ${hydra.run.dir}/${hydra.job.name}.log
+  verbose: ${debug}
+
+
+defaults:
+  - wandb: defaults
+  - train: base_train
+  - data: base_data
+  - override hydra/job_logging: colorlog
+  - override hydra/hydra_logging: colorlog
+  - _self_
+
+
+# All the extra arguments
+debug: True
+exp_num: 4321
+exp_name: naacl_${exp_num}
+seed: 10
+cuda: True
+obsv_prob: 0.9
