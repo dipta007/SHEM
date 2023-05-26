@@ -8,27 +8,55 @@ This repository is the official implementation of [Semantically-informed Hierarc
 
 ![Main Figure](./figs/main.png)
 
-## 👨🏻‍💻 Code
+## Getting Started
+```
+git clone https://github.com/dipta007/SHEM
+cd SHEM
+git checkout lexical
+```
 
-For simplicity and usability, the code is divided into different branches based on the experiments. The `main` branch contains the information of other branches. The following table shows the branches and their corresponding experiments.
+## Conda Environment
+```
+conda create -n shem python=3.7
+conda activate shem
+conda install pip
+conda install pytorch torchvision torchaudio pytorch-cuda=11.7 -c pytorch -c nvidia
+pip install torchtext==0.2.3
+pip install -U scikit-learn
+conda install -c conda-forge pytablewriter
+conda install -c anaconda pandas
+pip install gdown
+```
 
-| Branch | Experiment | Section in Paper | Table in Paper | Model Name in Paper |
-| :---: | --- | :---: | :---: | :---: |
-| [main](https://github.com/dipta007/SHEM) | Information on All experiments | - | - | - |
-| [inference_frame](https://github.com/dipta007/SHEM/tree/inference_frame) | Is Frame Inheritance Sufficient? | 5.1 | 1, 6, 7 | `ours: inf. frame` |
-| [lexical](https://github.com/dipta007/SHEM/tree/lexical) | Is Frame Inheritance Sufficient? | 5.1 | 1, 6, 7 | `ours: lexical` |
-| [ind_frame](https://github.com/dipta007/SHEM/tree/ind_frame) | Relations Beyond Inheritance | 5.2 | 2, 8, 9 | `Using`, `Precedes`, `Metaphor`, `See_also`, `Causative_of`, `Inchoative_of`, `Perspective_on`, `Subframe`, `ReFraming_Mapping`  |
-| [grp](https://github.com/dipta007/SHEM/tree/grp) | Relations Beyond Inheritance | 5.2 | 2, 12, 13 | `grouping` |
-| [scn](https://github.com/dipta007/SHEM/tree/scn) | Relations Beyond Inheritance | 5.2 | 2, 10, 11 | `scenario_only` |
-| [missing_grp](https://github.com/dipta007/SHEM/tree/missing_grp) | Predicting Missing Events | 5.3 | 3 | `grp` |
-| [missing_scn](https://github.com/dipta007/SHEM/tree/missing_scn) | Predicting Missing Events | 5.3 | 3 | `scn` |
-| [event_similarity](https://github.com/dipta007/SHEM/tree/event_similarity) | Improved Event Similarity | 5.4 | 4 | `ours` |
+## Data:
+```
+conda activate shem
+pip install gdown
+mkdir saved_models
+mkdir saved_configs
+gdown https://drive.google.com/drive/u/1/folders/1YUfHGdyVXONtvbJQCbBN0OA0ibXP82bw -O ./data --folder
+```
 
 
-## ✉️ Contact
+## Usage
+### Training:
+```
+./train.sh $obsv_prob $exp_num $seed
+```
 
-If you want to contact me you can reach me at [@Shubhashis Roy Dipta](mailto:sroydip1@umbc.edu) or open an issue in this repository.
+### Evaluation:
 
+#### data_mode:
+ {'valid','test'}
+
+#### Perplexity:
+```
+./test_ppx.sh $obsv_prob $exp_num $seed $data_mode
+```
+#### Wiki Inverse Narrative Cloze:
+```
+./wiki_inv_narr.sh $obsv_prob $exp_num $seed $data_mode
+```
 
 ## ⚠️ Disclaimer
 
