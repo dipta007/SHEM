@@ -1,0 +1,15 @@
+saved_models/
+saved_configs/
+data/
+.vector_cache/
+__pycache__
+_
+local.sh
+nyt_inv/
+wiki_inv/
+.history/
+inferences/
+nltk_data/
+corpora/
+log/
+wandb/
