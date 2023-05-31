@@ -2,7 +2,6 @@
 
 ![Python Version](https://badgen.net/pypi/python/black)
 ![MIT License](https://img.shields.io/github/license/dipta007/SHEM?style=plastic)
-![GitHub Top Language](https://img.shields.io/github/languages/top/dipta007/SHEM?style=plastic)
 
 This repository is the official implementation of [Semantically-informed Hierarchical Event Modeling](https://arxiv.org/abs/2212.10547) (Published in *SEM 2023).
 
